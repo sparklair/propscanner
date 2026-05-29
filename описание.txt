@@ -1,0 +1,213 @@
+Сканер работает примерно так:
+
+Запускается Chromium через Playwright.
+Открывается страница.
+В браузер инжектится hooks.js.
+Сканер начинает подставлять payload'ы:
+в URL query
+в JSON POST body
+После загрузки страницы проверяется:
+появился ли {}.pp_test
+были ли вызовы опасных sink'ов
+Все findings сохраняются в папку findings/.
+
+Теперь по файлам.
+
+main.py
+Это точка входа.
+
+Он:
+
+читает аргументы argparse,
+собирает список целей,
+запускает scanner.py.
+
+Поддержка:
+
+одиночного URL
+файла с URL
+crawling режима
+
+Примеры:
+
+python main.py -u https://site.com
+
+или:
+
+python main.py -f targets.txt
+
+С crawling:
+
+python main.py -u https://site.com --crawl
+
+scanner.py
+Главная логика.
+
+Класс:
+
+PrototypePollutionScanner
+
+Внутри:
+
+scan_page()
+
+открывает страницу
+инжектит hooks
+запускает payload fuzzing
+
+scan_query_payloads()
+Проверяет pollution через:
+
+?__proto__[x]=1
+
+scan_json_payloads()
+Отправляет:
+
+{
+  "__proto__": {
+    "x": 1
+  }
+}
+
+test_pollution()
+Проверяет:
+
+{}.pp_test
+
+extract_links()
+Собирает внутренние ссылки для crawling.
+
+save_finding()
+Сохраняет результаты.
+
+hooks.js
+Самая интересная часть.
+
+Это runtime instrumentation.
+
+Он monkey-patch'ит:
+
+innerHTML
+outerHTML
+setAttribute
+eval
+
+И логирует если payload дошел до sink.
+
+Например:
+
+element.innerHTML = "1337"
+
+Тогда увидишь:
+
+[PP Gadget][innerHTML]
+
+Это уже потенциальный DOM XSS gadget.
+
+payloads.py
+Просто словари payload'ов.
+
+Туда можно добавлять:
+
+новые bypass payloads
+framework-specific payloads
+lodash payloads
+qs payloads
+
+Например:
+
+"__proto__.isAdmin=true"
+
+utils.py
+Вспомогательные функции:
+
+colored logs
+URL builder
+
+Как использовать на практике
+
+Ставишь зависимости:
+pip install -r requirements.txt
+playwright install
+Создаешь targets.txt
+https://target1.com
+https://target2.com
+Запускаешь
+python main.py -f targets.txt --crawl
+
+Что искать в выводе
+
+Хороший признак:
+
+[+] Pollution detected
+
+Очень хороший признак:
+
+[PP Gadget][innerHTML]
+
+Это значит:
+
+pollution сработал
+payload дошел до sink
+
+Тогда уже можно пытаться:
+
+DOM XSS
+sanitizer bypass
+auth bypass
+CSP bypass
+
+Как расширять дальше
+
+Самые полезные направления:
+
+Добавить hooks:
+fetch
+document.write
+insertAdjacentHTML
+setTimeout
+Function
+Добавить parameter mining
+
+Парсить:
+
+forms
+JS variables
+API routes
+Добавить JS analysis
+
+Искать:
+
+lodash.merge
+deepmerge
+Object.assign
+qs.parse
+Добавить gadget fingerprints
+
+Например:
+
+React
+Vue
+jQuery
+Next.js
+Nuxt
+Добавить stealth
+
+Сейчас headless браузер палится.
+
+Можно добавить:
+
+playwright-stealth
+user-agent rotation
+proxy support
+
+Типичный workflow bug bounty:
+
+subfinder/amass
+httpx
+crawler
+этот scanner
+ручной анализ gadget'ов
+exploitation
+
+Именно ручной gadget analysis обычно дает реальные high severity репорты.
